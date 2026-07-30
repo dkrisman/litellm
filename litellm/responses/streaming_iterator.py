@@ -595,7 +595,7 @@ class BaseResponsesAPIStreamingIterator:
 
         self._completed_response_cached = True
 
-    def _accumulate_streamed_output_item(self, chunk: Any) -> None:
+    def _accumulate_streamed_output_item(self, chunk: ResponsesAPIStreamingResponse) -> None:
         """
         Accumulate OUTPUT_ITEM_DONE / OUTPUT_TEXT_DONE payloads from a post-hook chunk
         so they can backfill response.completed.output when the provider sends it empty.
