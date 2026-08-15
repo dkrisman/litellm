@@ -413,7 +413,7 @@ class TestStreamingIteratorOutputRecovery:
                 iterator, json.dumps({"type": "response.output_item.done", "output_index": 0, "item": _OUTPUT_ITEM})
             )
             with patch.object(
-                iterator._streamed_output_items[0],
+                iterator._streamed_output_items[0],  # pyright: ignore[reportPrivateUsage]  # test-only: verify accumulator state to simulate serialization failure
                 "model_dump",
                 side_effect=RuntimeError("serialization failure"),
             ):
