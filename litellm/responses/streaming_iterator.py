@@ -31,7 +31,7 @@ from litellm.litellm_core_utils.llm_response_utils.response_metadata import (
 )
 from litellm.litellm_core_utils.thread_pool_executor import executor
 from litellm.llms.base_llm.responses.transformation import BaseResponsesAPIConfig
-from litellm.responses.sse_output_recovery import _MAX_CONTENT_INDEX
+from litellm.responses.sse_output_recovery import MAX_CONTENT_INDEX
 from litellm.responses.utils import ResponseAPILoggingUtils, ResponsesAPIRequestUtils
 from litellm.types.llms.base import BaseLiteLLMOpenAIResponseObject
 from litellm.types.llms.openai import (
@@ -629,7 +629,7 @@ class BaseResponsesAPIStreamingIterator:
                 and _text_output_index not in self._streamed_output_items
             ):
                 _content_index: Final = getattr(chunk, "content_index", 0) or 0
-                if 0 <= _content_index <= _MAX_CONTENT_INDEX:
+                if 0 <= _content_index <= MAX_CONTENT_INDEX:
                     _item_id: Final = getattr(chunk, "item_id", None) or f"msg_{_text_output_index}"
                     _existing: Final = self._streamed_text_only_items.get(_text_output_index)
                     _existing_content: Final = list(  # mutable-ok: copy existing content for slot replacement
