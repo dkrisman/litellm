@@ -28,6 +28,17 @@ from ..common_utils import (
     get_chatgpt_default_instructions,
 )
 
+_STRUCTURED_OUTPUT_FORMAT_TYPES: Final = frozenset({"json_schema", "json_object"})
+
+
+def _has_structured_output_format(text: object) -> bool:
+    if not isinstance(text, dict):
+        return False
+    format_config: Final = text.get("format")
+    if not isinstance(format_config, dict):
+        return False
+    return format_config.get("type") in _STRUCTURED_OUTPUT_FORMAT_TYPES
+
 
 class ChatGPTResponsesAPIConfig(OpenAIResponsesAPIConfig):
     def __init__(self) -> None:
@@ -99,6 +110,7 @@ class ChatGPTResponsesAPIConfig(OpenAIResponsesAPIConfig):
             "reasoning",
             "previous_response_id",
             "truncation",
+            *(("text",) if _has_structured_output_format(request.get("text")) else ()),
         }
 
         return {k: v for k, v in request.items() if k in allowed_keys}
