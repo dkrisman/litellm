@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import os
 from collections.abc import AsyncIterator, Iterator, Mapping
 from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
@@ -872,6 +873,29 @@ class LiteLLMAnthropicMessagesAdapter:
             text_parts.append(text_obj)
         return ChatCompletionSystemMessage(role="system", content=text_parts) if text_parts else None
 
+    def _demote_midturn_system_messages(
+        self,
+        new_messages: list[AllMessageValues],  # mutable-ok: matches ChatCompletionRequest.messages
+    ) -> list[AllMessageValues]:  # mutable-ok: ChatCompletionRequest.messages requires a list
+        """Return the messages with system entries after index 0 rewritten as user rows, opt-in.
+
+        Gated on LITELLM_DEMOTE_MIDTURN_SYSTEM=true. OpenAI accepts system
+        messages anywhere in the conversation, but many OpenAI-compatible
+        backends enforce chat templates that reject non-leading system rows
+        (e.g. Qwen3 served by vLLM: "System message must be at the
+        beginning."). Clients like Claude Code send mid-turn system
+        reminders, so without this those requests 400. Demoting to a user
+        row mirrors how such reminders were historically delivered.
+        """
+        if os.environ.get("LITELLM_DEMOTE_MIDTURN_SYSTEM", "").strip().lower() != "true":
+            return new_messages
+        return [  # mutable-ok: ChatCompletionRequest.messages requires a list
+            ChatCompletionUserMessage(role="user", content=message.get("content") or "")
+            if index > 0 and message.get("role") == "system"
+            else message
+            for index, message in enumerate(new_messages)
+        ]
+
     def _add_system_message_to_messages(
         self,
         new_messages: list[AllMessageValues],
@@ -1094,10 +1118,11 @@ class LiteLLMAnthropicMessagesAdapter:
         )
         ## ADD SYSTEM MESSAGE TO MESSAGES
         self._add_system_message_to_messages(new_messages, anthropic_message_request)
+        final_messages: Final = self._demote_midturn_system_messages(new_messages)
 
         new_kwargs: Final[ChatCompletionRequest] = {
             "model": anthropic_message_request["model"],
-            "messages": new_messages,
+            "messages": final_messages,
         }
         ## CONVERT METADATA (user_id + litellm metadata)
         self._translate_metadata_to_openai(
