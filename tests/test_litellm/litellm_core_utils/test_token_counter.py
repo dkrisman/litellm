@@ -1114,3 +1114,91 @@ def test_count_content_list_rejects_unknown_type():
     message = str(exc_info.value)
     assert "Invalid content item type: totally_unknown_block" in message
     assert "tool_reference" in message
+
+
+TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+
+def test_token_counter_anthropic_base64_image_block():
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "what is in this image"},
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": TINY_PNG_B64,
+                    },
+                },
+            ],
+        }
+    ]
+
+    tokens = token_counter_new(model="gpt-4o", messages=messages)
+
+    assert tokens > 0
+
+
+def test_token_counter_anthropic_url_image_block():
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "url", "url": "https://example.com/cat.png"},
+                },
+            ],
+        }
+    ]
+
+    tokens = token_counter_new(
+        model="gpt-4o", messages=messages, use_default_image_token_count=True
+    )
+
+    assert tokens > 0
+
+
+def test_token_counter_anthropic_image_inside_tool_result():
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": TINY_PNG_B64,
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+
+    tokens = token_counter_new(model="gpt-4o", messages=messages)
+
+    assert tokens > 0
+
+
+def test_token_counter_invalid_anthropic_image_source_uses_default():
+    messages = [
+        {"role": "user", "content": [{"type": "image", "source": "not-a-dict"}]}
+    ]
+
+    tokens = token_counter_new(
+        model="gpt-4o", messages=messages, default_token_count=7
+    )
+    assert tokens >= 7
+
+    with pytest.raises(ValueError):
+        token_counter_new(model="gpt-4o", messages=messages)

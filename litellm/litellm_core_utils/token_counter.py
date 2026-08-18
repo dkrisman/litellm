@@ -682,6 +682,17 @@ def _count_anthropic_content(
     return tokens
 
 
+def _anthropic_image_source_to_image_url(source: object) -> str:
+    """Map an Anthropic image source to the url form _count_image_tokens accepts."""
+    if isinstance(source, dict):
+        if source.get("type") == "base64":
+            media_type: Final = str(source.get("media_type") or "image/png")
+            return f"data:{media_type};base64,{source.get('data') or ''}"
+        if source.get("type") == "url":
+            return str(source.get("url") or "")
+    raise ValueError(f"Invalid Anthropic image source: expected base64 or url source, got {source!r}")
+
+
 def _count_content_list(
     count_function: TokenCounterFunction,
     content_list: OpenAIMessageContent,
@@ -701,6 +712,12 @@ def _count_content_list(
             elif c["type"] == "image_url":
                 image_url = c.get("image_url")
                 num_tokens += _count_image_tokens(image_url, use_default_image_token_count)
+            elif c["type"] == "image":
+                # Anthropic image block: {"type": "image", "source": {...}}
+                num_tokens += _count_image_tokens(
+                    _anthropic_image_source_to_image_url(c.get("source")),
+                    use_default_image_token_count,
+                )
             elif c["type"] in ("tool_use", "tool_result"):
                 num_tokens += _count_anthropic_content(
                     c,
@@ -729,7 +746,7 @@ def _count_content_list(
                 content_type = c.get("type", type(c).__name__) if isinstance(c, dict) else type(c).__name__
                 raise ValueError(
                     f"Invalid content item type: {content_type}. "
-                    f"Expected str or dict with 'type' field (text, image_url, tool_use, tool_result, thinking, tool_reference)."
+                    f"Expected str or dict with 'type' field (text, image_url, image, tool_use, tool_result, thinking, tool_reference)."
                 )
         return num_tokens
     except Exception as e:
