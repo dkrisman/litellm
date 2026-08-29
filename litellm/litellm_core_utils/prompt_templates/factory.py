@@ -89,6 +89,18 @@ DEFAULT_ASSISTANT_CONTINUE_MESSAGE: Final = ChatCompletionAssistantMessage(
 )  # similar to autogen. Only used if `litellm.modify_params=True`.
 
 
+def _as_text_blocks(content: object) -> tuple[ChatCompletionTextObject, ...]:
+    if isinstance(content, list):
+        return tuple(content)
+    if content is None:
+        return ()
+    block: Final[ChatCompletionTextObject] = {
+        "type": "text",
+        "text": content if isinstance(content, str) else str(content),
+    }
+    return (block,)
+
+
 def map_system_message_pt(messages: list) -> list:
     """
     Convert 'system' message to 'user' message if provider doesn't support 'system' role.
@@ -108,7 +120,13 @@ def map_system_message_pt(messages: list) -> list:
                 next_role = next_m["role"]
                 if next_role == "user" or next_role == "assistant":  # Next message is a user or assistant message
                     # Merge system prompt into the next message
-                    next_m["content"] = m["content"] + " " + next_m["content"]
+                    system_content: Final = m["content"]
+                    next_content: Final = next_m["content"]
+                    if isinstance(system_content, str) and isinstance(next_content, str):
+                        next_m["content"] = system_content + " " + next_content  # rebind-ok: contract merges in place
+                    else:
+                        merged: Final = (*_as_text_blocks(system_content), *_as_text_blocks(next_content))
+                        next_m["content"] = [*merged]  # rebind-ok: in-place merge  # mutable-ok: API list
                 elif next_role == "system":  # Next message is a system message
                     # Append a user message instead of the system message
                     new_message = {"role": "user", "content": m["content"]}

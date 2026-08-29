@@ -3627,3 +3627,44 @@ def test_convert_gemini_tool_call_result_answers_tool_reference_only_result():
     )
 
     assert result == {"function_response": {"name": "ToolSearch", "response": {"content": ""}}}
+
+
+class TestMapSystemMessagePt:
+    def test_merges_string_system_into_string_user(self):
+        from litellm.litellm_core_utils.prompt_templates.factory import map_system_message_pt
+
+        messages = [
+            {"role": "system", "content": "You are terse."},
+            {"role": "user", "content": "hi"},
+        ]
+
+        result = map_system_message_pt(messages=messages)
+
+        assert result == [{"role": "user", "content": "You are terse. hi"}]
+
+    @pytest.mark.parametrize(
+        ("system_content", "user_content"),
+        [
+            ([{"type": "text", "text": "You are terse."}], "hi"),
+            ("You are terse.", [{"type": "text", "text": "hi"}]),
+            (
+                [{"type": "text", "text": "You are terse."}],
+                [{"type": "text", "text": "hi"}],
+            ),
+        ],
+    )
+    def test_merges_content_block_lists_without_type_error(
+        self, system_content, user_content
+    ):
+        from litellm.litellm_core_utils.prompt_templates.factory import map_system_message_pt
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+        ]
+
+        result = map_system_message_pt(messages=messages)
+
+        assert len(result) == 1
+        merged = result[0]["content"]
+        assert [b["text"] for b in merged] == ["You are terse.", "hi"]
