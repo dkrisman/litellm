@@ -1393,7 +1393,12 @@ class LiteLLMAnthropicMessagesAdapter:
         )
         if explicit_value > 0:
             return explicit_value
-        return cls._first_positive_prompt_tokens_detail_value(usage, ("cache_creation_tokens", "cache_write_tokens"))
+        # "created_cache_tokens" is vLLM's naming (OpenAI-compatible servers with
+        # --enable-prompt-tokens-details); preserved as a pydantic extra on
+        # PromptTokensDetailsWrapper rather than a declared field.
+        return cls._first_positive_prompt_tokens_detail_value(
+            usage, ("cache_creation_tokens", "cache_write_tokens", "created_cache_tokens")
+        )
 
     @classmethod
     def _get_web_search_request_count(cls, usage: Usage) -> int:
