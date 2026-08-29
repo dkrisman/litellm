@@ -3241,6 +3241,85 @@ def test_translate_streaming_openai_response_to_anthropic_cache_tokens_with_appl
     assert message_delta["context_management"]["applied_edits"][0]["type"] == ("compact_20260112")
 
 
+def test_translate_streaming_openai_response_to_anthropic_vllm_created_cache_tokens():
+    """vLLM (--enable-prompt-tokens-details) reports cache-write usage as
+    prompt_tokens_details.created_cache_tokens — preserved as a pydantic extra
+    when the OpenAI-compatible response is parsed. It must map to
+    cache_creation_input_tokens and be subtracted from input_tokens."""
+    usage = Usage(
+        prompt_tokens=5260,
+        completion_tokens=16,
+        total_tokens=5276,
+        prompt_tokens_details={
+            "cached_tokens": 1600,
+            "created_cache_tokens": 3200,
+            "multimodal_tokens": None,
+        },
+    )
+    response = ModelResponseStream(
+        choices=[
+            StreamingChoices(
+                index=0,
+                delta=Delta(),
+                finish_reason="stop",
+            )
+        ],
+    )
+    response._hidden_params = {"usage": usage}
+
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    message_delta = adapter.translate_streaming_openai_response_to_anthropic(
+        response=response,
+        current_content_block_index=0,
+    )
+
+    assert message_delta["usage"]["input_tokens"] == 460
+    assert message_delta["usage"]["output_tokens"] == 16
+    assert message_delta["usage"]["cache_read_input_tokens"] == 1600
+    assert message_delta["usage"]["cache_creation_input_tokens"] == 3200
+
+
+def test_get_cache_creation_input_tokens_vllm_naming_dict_details():
+    """The helper also accepts a plain-dict prompt_tokens_details."""
+    usage = Usage(prompt_tokens=100, completion_tokens=1, total_tokens=101)
+    usage.prompt_tokens_details = {"created_cache_tokens": 40}  # pyright: ignore[reportAttributeAccessIssue]  # exercising the plain-dict details branch
+    assert (
+        LiteLLMAnthropicMessagesAdapter._get_cache_creation_input_tokens(usage) == 40
+    )
+
+
+def test_get_cache_creation_input_tokens_canonical_naming_wins_over_vllm():
+    """Canonical litellm fields keep precedence over the vLLM extra."""
+    from litellm.types.utils import PromptTokensDetailsWrapper
+
+    usage = Usage(
+        prompt_tokens=100,
+        completion_tokens=1,
+        total_tokens=101,
+        prompt_tokens_details=PromptTokensDetailsWrapper(
+            cache_creation_tokens=25,
+            created_cache_tokens=40,
+        ),
+    )
+    assert (
+        LiteLLMAnthropicMessagesAdapter._get_cache_creation_input_tokens(usage) == 25
+    )
+
+
+def test_get_cache_creation_input_tokens_explicit_usage_value_wins_over_vllm():
+    """An explicit usage.cache_creation_input_tokens beats any details field."""
+    usage = Usage(
+        prompt_tokens=100,
+        completion_tokens=1,
+        total_tokens=101,
+        cache_creation_input_tokens=10,
+        prompt_tokens_details={"created_cache_tokens": 40},
+    )
+    assert (
+        LiteLLMAnthropicMessagesAdapter._get_cache_creation_input_tokens(usage) == 10
+    )
+
+
 # =====================================================================
 # Web Search Tool Transformation Tests
 # =====================================================================
