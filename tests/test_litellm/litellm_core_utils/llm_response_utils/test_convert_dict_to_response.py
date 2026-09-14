@@ -33,7 +33,7 @@ OPENAI_CUSTOM_TOOL_CALL_RESPONSE = {
                         "type": "custom",
                         "custom": {
                             "name": "ApplyPatch",
-                            "input": "*** Begin Patch\n*** Update File: main.py\n@@\n+def hello():\n+    print(\"Hello\")\n*** End Patch\n",
+                            "input": '*** Begin Patch\n*** Update File: main.py\n@@\n+def hello():\n+    print("Hello")\n*** End Patch\n',
                         },
                     }
                 ],
