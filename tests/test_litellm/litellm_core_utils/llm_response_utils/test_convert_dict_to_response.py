@@ -195,3 +195,31 @@ async def test_convert_non_list_choices_raises_api_error(choices: object, type_n
     with pytest.raises(APIError, match=expected):
         async for _ in convert_to_streaming_response_async(response_object=resp):
             pass
+
+
+def test_convert_audio_transcription_usage_without_input_token_details():
+    """OpenAI-compatible servers (llama.cpp's llama-server) return token usage
+    without the per-modality breakdown; the optional field must not fail parsing."""
+    from litellm.types.utils import TranscriptionResponse, TranscriptionUsageTokensObject
+
+    response_object = {
+        "text": "I have a dream",
+        "usage": {
+            "type": "tokens",
+            "input_tokens": 348,
+            "output_tokens": 23,
+            "total_tokens": 371,
+            "input_token_details": None,
+            "input_tokens_details": {"cached_tokens": 0},
+        },
+    }
+    result = convert_to_model_response_object(
+        response_object=response_object,
+        model_response_object=TranscriptionResponse(),
+        response_type="audio_transcription",
+    )
+    assert isinstance(result, TranscriptionResponse)
+    assert result.text == "I have a dream"
+    assert isinstance(result.usage, TranscriptionUsageTokensObject)
+    assert result.usage.input_tokens == 348
+    assert result.usage.input_token_details is None

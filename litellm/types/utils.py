@@ -2622,7 +2622,9 @@ class TranscriptionUsageTokensObject(BaseModel):
     input_tokens: int
     output_tokens: int
     total_tokens: int
-    input_token_details: TranscriptionUsageInputTokenDetailsObject
+    # Optional: OpenAI-compatible servers (e.g. llama.cpp's llama-server) return
+    # token usage without the per-modality breakdown.
+    input_token_details: TranscriptionUsageInputTokenDetailsObject | None = None
 
 
 class TranscriptionResponse(OpenAIObject):
