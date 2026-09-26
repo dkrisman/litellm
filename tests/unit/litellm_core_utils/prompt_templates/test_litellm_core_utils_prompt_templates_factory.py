@@ -3895,7 +3895,6 @@ def test_anthropic_messages_pt_drops_a_system_message_with_no_text():
     result = anthropic_messages_pt(messages=messages, model="claude-opus-4-8", llm_provider="anthropic")
 
     assert [m["role"] for m in result] == ["user", "assistant"]
-||||||| e09bbe9a14:tests/test_litellm/litellm_core_utils/prompt_templates/test_litellm_core_utils_prompt_templates_factory.py
 
 
 class TestMapSystemMessagePt:
