@@ -148,3 +148,19 @@ def test_document_modality_folds_into_text():
     )
     assert usage.prompt_tokens_details is not None
     assert usage.prompt_tokens_details.text_tokens == 80
+
+
+def test_transcription_token_usage_without_input_token_details():
+    """llama-server style token usage has no per-modality breakdown."""
+    from litellm.litellm_core_utils.llm_cost_calc.usage_object_transformation import (
+        TranscriptionUsageObjectTransformation,
+    )
+    from litellm.types.utils import TranscriptionUsageTokensObject
+
+    usage_object = TranscriptionUsageTokensObject(type="tokens", input_tokens=348, output_tokens=23, total_tokens=371)
+    usage = TranscriptionUsageObjectTransformation.transform_transcription_usage_object(usage_object)
+    assert usage is not None
+    assert usage.prompt_tokens == 348
+    assert usage.completion_tokens == 23
+    assert usage.total_tokens == 371
+    assert usage.prompt_tokens_details is None
