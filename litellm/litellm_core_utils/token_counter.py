@@ -512,39 +512,70 @@ def _count_messages(
         use_default_image_token_count (bool): When True, will NOT make a GET request to the image URL and instead return the default image dimensions.
         default_token_count (Optional[int]): The default number of tokens to return for a message block, if an error occurs.
     """
-    num_tokens = 0
-    if len(messages) == 0:
-        return num_tokens
-    for message in messages:
-        num_tokens += params.tokens_per_message
-        for key, value in message.items():
-            if value is None:
-                pass
-            elif key in ("tool_calls", "function_call"):
-                num_tokens += _count_function_call_tokens(key, value, message, params.count_function)
-            elif isinstance(value, str):
-                num_tokens += params.count_function(value)
-                if key == "name":
-                    num_tokens += params.tokens_per_name
-            elif key == "content" and isinstance(value, list):
-                num_tokens += _count_content_list(
-                    params.count_function,
-                    value,
-                    use_default_image_token_count,
-                    default_token_count,
-                )
-            elif key == "search_results" and isinstance(value, list):
-                from litellm.litellm_core_utils.prompt_templates.common_utils import (
-                    extract_search_results_text,
-                )
+    last_assistant_index: Final = _last_assistant_index(messages)
+    return sum(
+        params.tokens_per_message
+        + _count_message_fields(
+            params,
+            message,
+            use_default_image_token_count,
+            default_token_count,
+            # Reasoning from earlier assistant turns never reaches the model: the
+            # Anthropic API strips it from context and does not bill it, and the
+            # OpenAI-compatible chat transforms drop it before the request leaves.
+            # Only the latest assistant turn's reasoning is carried (tool-use loops).
+            counts_reasoning=message.get("role") != "assistant" or index == last_assistant_index,
+        )
+        for index, message in enumerate(messages)
+    )
 
-                search_results_text = extract_search_results_text(value)
-                if search_results_text:
-                    num_tokens += params.count_function(search_results_text)
-            else:
-                # Skip unsupported keys instead of raising an error
-                continue
+
+def _count_message_fields(
+    params: _MessageCountParams,
+    message: AllMessageValues,
+    use_default_image_token_count: bool,
+    default_token_count: int | None,
+    *,
+    counts_reasoning: bool,
+) -> int:
+    num_tokens = 0
+    for key, value in message.items():
+        if value is None:
+            pass
+        elif key == "reasoning_content" and not counts_reasoning:
+            continue
+        elif key in ("tool_calls", "function_call"):
+            num_tokens += _count_function_call_tokens(key, value, message, params.count_function)
+        elif isinstance(value, str):
+            num_tokens += params.count_function(value)
+            if key == "name":
+                num_tokens += params.tokens_per_name
+        elif key == "content" and isinstance(value, list):
+            num_tokens += _count_content_list(
+                params.count_function,
+                value,
+                use_default_image_token_count,
+                default_token_count,
+                counts_reasoning=counts_reasoning,
+            )
+        elif key == "search_results" and isinstance(value, list):
+            from litellm.litellm_core_utils.prompt_templates.common_utils import (
+                extract_search_results_text,
+            )
+
+            search_results_text = extract_search_results_text(value)
+            if search_results_text:
+                num_tokens += params.count_function(search_results_text)
+        else:
+            # Skip unsupported keys instead of raising an error
+            continue
     return num_tokens
+
+
+def _last_assistant_index(messages: Sequence[AllMessageValues]) -> int | None:
+    return next(
+        (index for index in range(len(messages) - 1, -1, -1) if messages[index].get("role") == "assistant"), None
+    )
 
 
 def _count_extra(
@@ -866,6 +897,17 @@ def _count_anthropic_content(
     return tokens
 
 
+def _count_thinking_block(
+    block: Mapping[str, object], count_function: TokenCounterFunction, counts_reasoning: bool
+) -> int:
+    """Tokens of a Claude extended-thinking block: the thinking text only (the signature
+    and redacted data are opaque), and nothing when the turn's reasoning is not counted."""
+    if not counts_reasoning:
+        return 0
+    thinking_text: Final = str(block.get("thinking", ""))
+    return count_function(thinking_text) if thinking_text else 0
+
+
 def _count_content_list(
     count_function: TokenCounterFunction,
     content_list: str
@@ -879,8 +921,15 @@ def _count_content_list(
     ],
     use_default_image_token_count: bool,
     default_token_count: int | None,
+    *,
+    counts_reasoning: bool = True,
 ) -> int:
-    """Recursively count tokens from a list of content blocks."""
+    """Recursively count tokens from a list of content blocks.
+
+    ``counts_reasoning=False`` skips ``thinking`` / ``redacted_thinking`` blocks: the
+    caller knows this content belongs to an earlier assistant turn whose reasoning the
+    provider strips before the prompt is built.
+    """
     try:
         num_tokens = 0
         for c in content_list:
@@ -918,11 +967,7 @@ def _count_content_list(
                     default_token_count,
                 )
             elif c["type"] in ("thinking", "redacted_thinking"):
-                # Claude extended thinking content block
-                # Count the thinking text and skip the opaque blobs (signature, redacted data)
-                thinking_text = str(c.get("thinking", ""))
-                if thinking_text:
-                    num_tokens += count_function(thinking_text)
+                num_tokens += _count_thinking_block(c, count_function, counts_reasoning)
             elif c["type"] == "tool_reference":
                 # Anthropic tool-search reference block: a lightweight pointer to
                 # a deferred tool, e.g. {"type": "tool_reference", "tool_name": ...}.
