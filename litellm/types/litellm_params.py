@@ -291,6 +291,8 @@ class PromptOptions:
 class ResponseOptions:
     merge_reasoning_content_in_choices: bool | None = None
     thought_signature_in_tool_call_id: bool | None = None
+    forward_reasoning_content: bool | None = None
+    reasoning_content_field: str | None = None
     enable_json_schema_validation: bool | None = None
     complete_response: bool | None = None
     keepalive_seconds: float | None = None

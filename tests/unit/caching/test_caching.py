@@ -14,8 +14,8 @@ import pytest
 import respx
 
 import litellm
-from litellm import acompletion, aembedding, completion, embedding
 import litellm.caching.redis_cache as redis_cache_module
+from litellm import acompletion, aembedding, completion, embedding
 from litellm._internal_context import current_service_target
 from litellm.caching.caching import Cache, CacheMode, response_cache_phase
 from litellm.caching.caching_handler import _PENDING_CACHE_WRITES
@@ -139,6 +139,52 @@ def _semantic_cache(**cache_kwargs):
         similarity_threshold=0.8,
         **cache_kwargs,
     )
+
+
+@pytest.mark.parametrize("semantic", [False, True])
+def test_reasoning_forwarding_cache_scope_preserves_groups_namespace_and_tenant(semantic):
+    cache = _semantic_cache(namespace="reasoning-test") if semantic else Cache(type="local", namespace="reasoning-test")
+
+    def key(alias="first", tenant="tenant-a", namespace="reasoning-test", nested=False, forward=None, prompt="hi"):
+        return cache.get_cache_key(
+            model="hosted_vllm/reasoning-test",
+            messages=[{"role": "user", "content": prompt}],
+            metadata={"model_group": alias, "caching_groups": [("first", "second")], "user_api_key": tenant},
+            cache={"namespace": namespace},
+            **(
+                {"litellm_params": {"forward_reasoning_content": forward}}
+                if nested
+                else {"forward_reasoning_content": forward}
+            ),
+        )
+
+    default = key()
+    disabled = key(forward=False)
+    assert default == key(forward=True) == key(nested=True, forward=True)
+    assert disabled != default
+    assert disabled == key(nested=True, forward=False) == key(alias="second", forward=False)
+    assert disabled.startswith("reasoning-test:")
+    assert disabled != key(namespace="other-namespace", forward=False)
+    if semantic:
+        assert disabled != key(tenant="tenant-b", forward=False)
+        assert disabled == key(prompt="hello", forward=False)
+    else:
+        assert disabled != key(prompt="hello", forward=False)
+
+
+def test_reasoning_forwarding_cache_key_preserves_legacy_disabled_key_and_top_level_precedence():
+    cache = Cache(type="local", namespace="reasoning-cache-test")
+    request = {"model": "hosted_vllm/reasoning-test", "messages": [{"role": "user", "content": "hi"}]}
+    legacy = "reasoning-cache-test:fca1120c8360f4b9ca0cd9b52f981f290a6eec25a8c6256033a81edcc713618c"
+    assert cache.get_cache_key(**request) == legacy
+    assert cache.get_cache_key(**request, forward_reasoning_content=True) == legacy
+    assert (
+        cache.get_cache_key(
+            **request, forward_reasoning_content=True, litellm_params={"forward_reasoning_content": False}
+        )
+        == legacy
+    )
+    assert cache.get_cache_key(**request, litellm_params={"forward_reasoning_content": False}) != legacy
 
 
 @pytest.mark.parametrize(
@@ -352,6 +398,48 @@ def test_exact_cache_key_includes_the_reasoning_summary_alias(summary_ask: dict[
         reasoning_effort="medium",
         reasoning_summary="detailed",
     )
+
+
+@pytest.mark.parametrize("semantic", [False, True])
+@pytest.mark.parametrize("provider", ["hosted_vllm", "openai"])
+def test_reasoning_field_cache_identity(semantic: bool, provider: str):
+    cache = _semantic_cache(namespace="history-field") if semantic else Cache(type="local", namespace="history-field")
+    request = {
+        "model": f"{provider}/reasoning-test",
+        "messages": [{"role": "user", "content": "hi"}],
+        "metadata": {"model_group": "first", "caching_groups": [("first", "second")], "user_api_key": "tenant-a"},
+    }
+    legacy = cache.get_cache_key(**request)
+    assert cache.get_cache_key(**request, reasoning_content_field="reasoning_content") == legacy
+    assert cache.get_cache_key(**request, litellm_params={"reasoning_content_field": "reasoning_content"}) == legacy
+    normalized = cache.get_cache_key(**request, reasoning_content_field="reasoning")
+    assert normalized != legacy
+    assert normalized == cache.get_cache_key(**request, litellm_params={"reasoning_content_field": "reasoning"})
+    assert normalized == cache.get_cache_key(
+        **request, reasoning_content_field="reasoning", forward_reasoning_content=True
+    )
+    assert normalized != cache.get_cache_key(
+        **request, reasoning_content_field="reasoning", forward_reasoning_content=False
+    )
+    assert (
+        cache.get_cache_key(
+            **request,
+            reasoning_content_field="reasoning_content",
+            litellm_params={"reasoning_content_field": "reasoning"},
+        )
+        == legacy
+    )
+    assert normalized == cache.get_cache_key(
+        **{**request, "metadata": {**request["metadata"], "model_group": "second"}}, reasoning_content_field="reasoning"
+    )
+    assert normalized != cache.get_cache_key(
+        **request, reasoning_content_field="reasoning", cache={"namespace": "other"}
+    )
+    if semantic:
+        assert normalized != cache.get_cache_key(
+            **{**request, "metadata": {**request["metadata"], "user_api_key": "tenant-b"}},
+            reasoning_content_field="reasoning",
+        )
 
 
 @pytest.mark.asyncio
@@ -668,7 +756,7 @@ def test_caching_v2():  # test in memory cache
         if response2["choices"][0]["message"]["content"] != response1["choices"][0]["message"]["content"]:
             print(f"response1: {response1}")
             print(f"response2: {response2}")
-            pytest.fail(f"Error occurred:")
+            pytest.fail("Error occurred:")
     except Exception as e:
         print(f"error occurred: {traceback.format_exc()}")
         pytest.fail(f"Error occurred: {e}")
@@ -757,11 +845,11 @@ def test_caching_with_models_v2():
         # if models are different, it should not return cached response
         print(f"response2: {response2}")
         print(f"response3: {response3}")
-        pytest.fail(f"Error occurred:")
+        pytest.fail("Error occurred:")
     if response1["choices"][0]["message"]["content"] != response2["choices"][0]["message"]["content"]:
         print(f"response1: {response1}")
         print(f"response2: {response2}")
-        pytest.fail(f"Error occurred:")
+        pytest.fail("Error occurred:")
 
 
 @pytest.mark.asyncio
@@ -909,7 +997,7 @@ def test_get_cache_key():
         print("passed!")
     except Exception as e:
         traceback.print_exc()
-        pytest.fail(f"Error occurred:", e)
+        pytest.fail("Error occurred:", e)
 
 
 def test_redis_caching_multiple_namespaces():
@@ -924,7 +1012,6 @@ def test_redis_caching_multiple_namespaces():
 
     import litellm
     from litellm import completion
-    from litellm._uuid import uuid
     from litellm.caching import Cache
 
     # Use a fixed uuid to ensure consistent cache keys

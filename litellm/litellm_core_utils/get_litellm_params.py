@@ -44,6 +44,11 @@ OAUTH_TOKEN_EXCHANGE_KWARGS_KEYS: Final = frozenset(
     }
 )
 
+# Internal reasoning-history options that `completion()` forwards from its own
+# kwargs into `get_litellm_params`, which are otherwise invisible to it because
+# that call site passes explicit named arguments rather than `**kwargs`.
+REASONING_TRANSPORT_KWARGS_KEYS: Final = frozenset({"forward_reasoning_content", "reasoning_content_field"})
+
 # Pre-define optional kwargs keys as frozenset for O(1) lookups
 # These are extracted from kwargs only if present, avoiding unnecessary .get() calls
 OPTIONAL_KWARGS_KEYS: Final = (
@@ -100,6 +105,7 @@ OPTIONAL_KWARGS_KEYS: Final = (
     | OPENAI_WIF_KWARGS_KEYS
     | OAUTH_TOKEN_EXCHANGE_KWARGS_KEYS
     | AGENTIC_LOOP_CONTROL_KWARGS_KEYS
+    | REASONING_TRANSPORT_KWARGS_KEYS
     | frozenset(CustomPricingLiteLLMParams.model_fields)
 )
 

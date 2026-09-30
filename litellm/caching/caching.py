@@ -16,6 +16,7 @@ import traceback
 from collections.abc import Awaitable, Callable, Generator, Mapping
 from contextlib import contextmanager
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Final, Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
@@ -442,6 +443,18 @@ class Cache:
                     if kwargs[param] is None:
                         continue  # ignore None params
                     cache_key += f"{param}: {kwargs[param]}"
+
+        nested_litellm_params: Final = kwargs.get("litellm_params") or MappingProxyType({})
+        forward_reasoning_content: Final = kwargs.get(
+            "forward_reasoning_content", nested_litellm_params.get("forward_reasoning_content")
+        )
+        if forward_reasoning_content is False:
+            cache_key += "forward_reasoning_content: False"
+        reasoning_content_field: Final = kwargs.get(
+            "reasoning_content_field", nested_litellm_params.get("reasoning_content_field")
+        )
+        if reasoning_content_field == "reasoning":
+            cache_key += "reasoning_content_field: reasoning"
 
         if is_semantic_cache:
             cache_key += self._get_semantic_cache_tenant_scope(kwargs)

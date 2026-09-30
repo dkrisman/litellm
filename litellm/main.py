@@ -94,6 +94,7 @@ from litellm.litellm_core_utils.get_litellm_params import (
     AWS_CREDENTIAL_KWARGS_KEYS,
     OAUTH_TOKEN_EXCHANGE_KWARGS_KEYS,
     PROVIDER_AFFINITY_HEADER_KWARG_KEY,
+    REASONING_TRANSPORT_KWARGS_KEYS,
     SUPPLEMENTAL_KWARGS_KEYS,
     InvalidControlOption,
     parse_control_options,
@@ -6224,6 +6225,7 @@ def completion(
                     "thought_signature_in_tool_call_id",
                     "responses_api_version",
                     "allowed_openai_params",
+                    *REASONING_TRANSPORT_KWARGS_KEYS,
                 )
                 if key in kwargs
             },

@@ -36645,6 +36645,8 @@ export interface components {
              * @description Send the LiteLLM user id of the calling key as the `user` field on Fireworks AI chat, responses and messages requests.
              */
             fireworks_forward_user_id?: boolean | null;
+            /** Forward Reasoning Content */
+            forward_reasoning_content?: boolean | null;
             /** Gcs Bucket Name */
             gcs_bucket_name?: string | null;
             /** Google Maps Grounding Cost Per Query */
@@ -36890,6 +36892,11 @@ export interface components {
             } | null;
             /** Quality Router Default Model */
             quality_router_default_model?: string | null;
+            /**
+             * Reasoning Content Field
+             * @description Historical assistant reasoning field: reasoning_content (default) or reasoning.
+             */
+            reasoning_content_field?: string | null;
             /** Region Name */
             region_name?: string | null;
             /** Regional Endpoint Uplift Multiplier */
@@ -52782,6 +52789,8 @@ export interface components {
              * @description Send the LiteLLM user id of the calling key as the `user` field on Fireworks AI chat, responses and messages requests.
              */
             fireworks_forward_user_id?: boolean | null;
+            /** Forward Reasoning Content */
+            forward_reasoning_content?: boolean | null;
             /** Gcs Bucket Name */
             gcs_bucket_name?: string | null;
             /** Google Maps Grounding Cost Per Query */
@@ -53027,6 +53036,11 @@ export interface components {
             } | null;
             /** Quality Router Default Model */
             quality_router_default_model?: string | null;
+            /**
+             * Reasoning Content Field
+             * @description Historical assistant reasoning field: reasoning_content (default) or reasoning.
+             */
+            reasoning_content_field?: string | null;
             /** Region Name */
             region_name?: string | null;
             /** Regional Endpoint Uplift Multiplier */

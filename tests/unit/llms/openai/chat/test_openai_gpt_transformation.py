@@ -1,10 +1,12 @@
 """
 Tests for OpenAI GPT transformation (litellm/llms/openai/chat/gpt_transformation.py)
 """
+
 import base64
 import copy
 import json
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Final
 
 import pytest
@@ -46,9 +48,7 @@ class TestOpenAIGPTConfig:
         be included in supported params so it reaches OpenAI and SpendLogs.
         """
         # responses/gpt-4.1-mini should support 'user' just like gpt-4.1-mini
-        supported_params = self.config.get_supported_openai_params(
-            "responses/gpt-4.1-mini"
-        )
+        supported_params = self.config.get_supported_openai_params("responses/gpt-4.1-mini")
         assert "user" in supported_params
 
         supported_params = self.config.get_supported_openai_params("responses/gpt-4o")
@@ -65,9 +65,7 @@ class TestOpenAIGPTConfig:
         """
         # Both should have the same supported params
         regular_params = self.config.get_supported_openai_params("gpt-4.1-mini")
-        responses_params = self.config.get_supported_openai_params(
-            "responses/gpt-4.1-mini"
-        )
+        responses_params = self.config.get_supported_openai_params("responses/gpt-4.1-mini")
 
         # 'user' should be in both
         assert "user" in regular_params
@@ -85,9 +83,7 @@ class TestOpenAIGPTConfig:
             "tool_choice",
         ]
 
-        supported_params = self.config.get_supported_openai_params(
-            "responses/gpt-4.1-mini"
-        )
+        supported_params = self.config.get_supported_openai_params("responses/gpt-4.1-mini")
 
         for param in base_expected_params:
             assert param in supported_params, f"Expected '{param}' in supported params"
@@ -197,9 +193,7 @@ class TestGetOptionalParamsIntegration:
         reasoning_effort must be forwarded so the server decides support."""
         from litellm.llms.openai.openai import OpenAIConfig
 
-        supported_params = OpenAIConfig().get_supported_openai_params(
-            "my-claude-alias"
-        )
+        supported_params = OpenAIConfig().get_supported_openai_params("my-claude-alias")
         assert "reasoning_effort" in supported_params
 
     def test_reasoning_effort_not_supported_for_known_non_reasoning_models(self):
@@ -208,9 +202,7 @@ class TestGetOptionalParamsIntegration:
 
         config = OpenAIConfig()
         assert "reasoning_effort" not in config.get_supported_openai_params("gpt-4o")
-        assert "reasoning_effort" not in config.get_supported_openai_params(
-            "responses/gpt-4.1-mini"
-        )
+        assert "reasoning_effort" not in config.get_supported_openai_params("responses/gpt-4.1-mini")
 
     def test_reasoning_effort_not_inherited_by_openai_compatible_subclasses(self):
         """Providers subclassing either openai config keep their own reasoning_effort gating
@@ -223,12 +215,8 @@ class TestGetOptionalParamsIntegration:
         class InheritingGPTConfig(OpenAIGPTConfig):
             pass
 
-        assert "reasoning_effort" not in InheritingDispatcherConfig().get_supported_openai_params(
-            "some-unknown-model"
-        )
-        assert "reasoning_effort" not in InheritingGPTConfig().get_supported_openai_params(
-            "some-unknown-model"
-        )
+        assert "reasoning_effort" not in InheritingDispatcherConfig().get_supported_openai_params("some-unknown-model")
+        assert "reasoning_effort" not in InheritingGPTConfig().get_supported_openai_params("some-unknown-model")
 
     def test_reasoning_effort_forwarded_in_optional_params_for_unknown_model_alias(
         self,
@@ -264,9 +252,7 @@ class TestOpenAIChatCompletionStreamingHandler:
         Test that chunk_parser preserves the usage field from streaming chunks.
 
         """
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         usage_chunk = {
             "id": "gen-123",
@@ -298,9 +284,7 @@ class TestOpenAIChatCompletionStreamingHandler:
         """OpenAI-compatible upstreams serve a service_tier on every streamed
         chunk; chunk_parser must keep it on the emitted ModelResponseStream so
         disconnect billing and the reassembled response see the served tier."""
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         tiered_chunk = {
             "id": "gen-123",
@@ -328,9 +312,7 @@ class TestOpenAIChatCompletionStreamingHandler:
         ends the stream (https://github.com/BerriAI/litellm/issues/25492)."""
         from litellm.llms.openai.common_utils import OpenAIError
 
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         error_chunk = {
             "error": {
@@ -353,14 +335,10 @@ class TestOpenAIChatCompletionStreamingHandler:
         "invalid_api_key") or none at all; those must map to 500, not crash."""
         from litellm.llms.openai.common_utils import OpenAIError
 
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         with pytest.raises(OpenAIError) as excinfo:
-            handler.chunk_parser(
-                {"error": {"message": "engine crashed", "code": "server_error"}}
-            )
+            handler.chunk_parser({"error": {"message": "engine crashed", "code": "server_error"}})
         assert excinfo.value.status_code == 500
         assert "engine crashed" in excinfo.value.message
 
@@ -377,9 +355,7 @@ class TestOpenAIChatCompletionStreamingHandler:
     def test_chunk_parser_tolerates_null_error_field(self):
         """A chunk that carries "error": null alongside real data must parse
         normally, not raise."""
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         chunk = {
             "id": "gen-123",
@@ -401,9 +377,7 @@ class TestOpenAIChatCompletionStreamingHandler:
 
     def test_chunk_parser_without_usage(self):
         """Test that chunk_parser works normally for chunks without usage."""
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         chunk = {
             "id": "gen-123",
@@ -435,9 +409,7 @@ class TestOpenAIChatCompletionStreamingHandler:
         Regression test for: Streaming responses with delta.reasoning field
         coming back empty when using openai/ or hosted_vllm/ providers.
         """
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         # Simulate a chunk with reasoning field (as returned by GLM-5)
         chunk = {
@@ -461,9 +433,7 @@ class TestOpenAIChatCompletionStreamingHandler:
         parsed_chunk = handler.chunk_parser(chunk)
 
         # Verify that reasoning was mapped to reasoning_content
-        assert (
-            parsed_chunk.choices[0].delta.reasoning_content == "The capital of France"
-        )
+        assert parsed_chunk.choices[0].delta.reasoning_content == "The capital of France"
         # Verify that the original 'reasoning' field was removed
         assert not hasattr(parsed_chunk.choices[0].delta, "reasoning")
 
@@ -471,9 +441,7 @@ class TestOpenAIChatCompletionStreamingHandler:
         """
         Test that chunks without reasoning field still work correctly.
         """
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         # Simulate a chunk without reasoning field
         chunk = {
@@ -511,9 +479,7 @@ class TestOpenAIChatCompletionStreamingHandler:
 
         Regression test for: KeyError: 'id' when using MiniMax m2.5 model
         """
-        handler = OpenAIChatCompletionStreamingHandler(
-            streaming_response=None, sync_stream=True
-        )
+        handler = OpenAIChatCompletionStreamingHandler(streaming_response=None, sync_stream=True)
 
         # Simulate a chunk without 'id' field (as returned by MiniMax)
         chunk = {
@@ -630,9 +596,7 @@ class TestGPT5ReasoningEffortPreservation:
         map_openai_params normalizes all dicts to string. Full dict is restored in main.py
         when routing to Responses API (test_gpt_5_4_responses_bridge_preserves_reasoning_summary_dict).
         """
-        non_default_params = {
-            "reasoning_effort": {"effort": "high", "summary": "detailed"}
-        }
+        non_default_params = {"reasoning_effort": {"effort": "high", "summary": "detailed"}}
         optional_params = {}
 
         self.config.map_openai_params(
@@ -647,9 +611,7 @@ class TestGPT5ReasoningEffortPreservation:
 
     def test_reasoning_effort_dict_with_generate_summary_normalized(self):
         """Test that reasoning_effort dict with 'generate_summary' is normalized for Chat Completions API."""
-        non_default_params = {
-            "reasoning_effort": {"effort": "medium", "generate_summary": "auto"}
-        }
+        non_default_params = {"reasoning_effort": {"effort": "medium", "generate_summary": "auto"}}
         optional_params = {}
 
         self.config.map_openai_params(
@@ -691,9 +653,7 @@ class TestGPT5ReasoningEffortPreservation:
         """
         import litellm
 
-        non_default_params = {
-            "reasoning_effort": {"effort": "xhigh", "summary": "detailed"}
-        }
+        non_default_params = {"reasoning_effort": {"effort": "xhigh", "summary": "detailed"}}
         optional_params = {}
 
         with pytest.raises(litellm.utils.UnsupportedParamsError):
@@ -706,9 +666,7 @@ class TestGPT5ReasoningEffortPreservation:
 
     def test_reasoning_effort_dict_xhigh_dropped_when_requested(self):
         """xhigh-dict with drop_params=True: reasoning_effort is dropped."""
-        non_default_params = {
-            "reasoning_effort": {"effort": "xhigh", "summary": "detailed"}
-        }
+        non_default_params = {"reasoning_effort": {"effort": "xhigh", "summary": "detailed"}}
         optional_params = {}
 
         self.config.map_openai_params(
@@ -722,9 +680,7 @@ class TestGPT5ReasoningEffortPreservation:
 
     def test_reasoning_effort_dict_none_passed_through_for_gpt5_4_with_tools(self):
         """none-dict with tools on gpt-5.4: reasoning_effort is passed through (routing to Responses at completion level)."""
-        tools = [
-            {"type": "function", "function": {"name": "test", "description": "test"}}
-        ]
+        tools = [{"type": "function", "function": {"name": "test", "description": "test"}}]
         non_default_params = {
             "reasoning_effort": {"effort": "none", "summary": "detailed"},
             "tools": tools,
@@ -835,63 +791,34 @@ class TestCacheControlPreservationForCustomEndpoint:
         )
 
     def test_predicate_openai_provider_custom_api_base_preserves(self):
-        assert (
-            self.config._should_preserve_cache_control_for_endpoint(
-                "openai", "http://localhost:4000/v1"
-            )
-            is True
-        )
+        assert self.config._should_preserve_cache_control_for_endpoint("openai", "http://localhost:4000/v1") is True
 
     def test_predicate_real_openai_no_api_base_strips(self):
-        assert (
-            self.config._should_preserve_cache_control_for_endpoint("openai", None)
-            is False
-        )
+        assert self.config._should_preserve_cache_control_for_endpoint("openai", None) is False
 
     def test_predicate_explicit_openai_host_strips(self):
-        assert (
-            self.config._should_preserve_cache_control_for_endpoint(
-                "openai", "https://api.openai.com/v1"
-            )
-            is False
-        )
+        assert self.config._should_preserve_cache_control_for_endpoint("openai", "https://api.openai.com/v1") is False
 
     def test_predicate_non_openai_provider_strips(self):
-        assert (
-            self.config._should_preserve_cache_control_for_endpoint(
-                "deepseek", "https://api.deepseek.com"
-            )
-            is False
-        )
+        assert self.config._should_preserve_cache_control_for_endpoint("deepseek", "https://api.deepseek.com") is False
 
     def test_predicate_resolves_openai_base_url_env(self, monkeypatch):
         monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
-        assert (
-            self.config._should_preserve_cache_control_for_endpoint("openai", None)
-            is True
-        )
+        assert self.config._should_preserve_cache_control_for_endpoint("openai", None) is True
 
     def test_predicate_resolves_openai_api_base_env(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_BASE", "http://localhost:4000/v1")
-        assert (
-            self.config._should_preserve_cache_control_for_endpoint("openai", None)
-            is True
-        )
+        assert self.config._should_preserve_cache_control_for_endpoint("openai", None) is True
 
     def test_predicate_lookalike_host_is_not_treated_as_openai(self):
         assert (
-            self.config._should_preserve_cache_control_for_endpoint(
-                "openai", "https://api.openai.com.evil.example/v1"
-            )
+            self.config._should_preserve_cache_control_for_endpoint("openai", "https://api.openai.com.evil.example/v1")
             is True
         )
 
     def test_predicate_openai_subdomain_strips(self):
         assert (
-            self.config._should_preserve_cache_control_for_endpoint(
-                "openai", "https://eu.api.openai.com/v1"
-            )
-            is False
+            self.config._should_preserve_cache_control_for_endpoint("openai", "https://eu.api.openai.com/v1") is False
         )
 
     def test_transform_request_preserves_for_custom_api_base(self):
@@ -914,9 +841,7 @@ class TestCacheControlPreservationForCustomEndpoint:
                 "cache_control": {"type": "ephemeral"},
             }
         ]
-        body = self._transform(
-            "openai", "http://localhost:4000/v1", optional_params={"tools": tools}
-        )
+        body = self._transform("openai", "http://localhost:4000/v1", optional_params={"tools": tools})
         assert "cache_control" in body["tools"][0]
 
     @pytest.mark.asyncio
@@ -1198,9 +1123,7 @@ class TestToolChoiceWithoutToolsDropped:
         assert "tool_choice" not in body
 
     def test_drops_named_function_tool_choice_without_tools(self):
-        body = self._transform(
-            {"tool_choice": {"type": "function", "function": {"name": "get_weather"}}}
-        )
+        body = self._transform({"tool_choice": {"type": "function", "function": {"name": "get_weather"}}})
         assert "tool_choice" not in body
 
     def test_drops_tool_choice_but_keeps_empty_tools_array(self):
@@ -1305,12 +1228,24 @@ async def test_openai_media_download_preserves_supported_chat_fields(
     text_part: Final = {"type": "text", "text": "What is the first page of the PDF?"}
     audio_part: Final = {"type": "input_audio", "input_audio": {"data": "YXVkaW8=", "format": "wav"}}
     media_parts: Final = [
-        {"type": "file", "file": {
-            "file_id": pdf_url, "format": "application/pdf", "detail": "high", "video_metadata": {"fps": 2},
-        }},
-        {"type": "image_url", "image_url": {
-            "url": image_url, "format": "image/png", "detail": "high", "video_metadata": {"fps": 2},
-        }},
+        {
+            "type": "file",
+            "file": {
+                "file_id": pdf_url,
+                "format": "application/pdf",
+                "detail": "high",
+                "video_metadata": {"fps": 2},
+            },
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": image_url,
+                "format": "image/png",
+                "detail": "high",
+                "video_metadata": {"fps": 2},
+            },
+        },
         audio_part,
     ]
     tool_call: Final = {
@@ -1319,7 +1254,8 @@ async def test_openai_media_download_preserves_supported_chat_fields(
     }
     messages: Final = (
         [tool_call, {"role": "tool", "tool_call_id": "call_asset", "content": [text_part, *media_parts]}]
-        if tool_result else [{"role": "user", "content": [text_part, *media_parts]}]
+        if tool_result
+        else [{"role": "user", "content": [text_part, *media_parts]}]
     )
     if sync_mode:
         litellm.completion(model="gpt-4o", messages=messages, api_key="sk-openai-test")
@@ -1340,12 +1276,15 @@ async def test_openai_media_download_preserves_supported_chat_fields(
         audio_part,
     ]
     expected_messages: Final = (
-        [tool_call, {"role": "tool", "tool_call_id": "call_asset", "content": [text_part]},
-         {"role": "user", "content": expected_content}]
-        if tool_result else [{"role": "user", "content": expected_content}]
+        [
+            tool_call,
+            {"role": "tool", "tool_call_id": "call_asset", "content": [text_part]},
+            {"role": "user", "content": expected_content},
+        ]
+        if tool_result
+        else [{"role": "user", "content": expected_content}]
     )
     assert json.loads(chat.calls[0].request.content)["messages"] == expected_messages
-
 
 
 @pytest.mark.respx(assert_all_called=True)
@@ -1398,9 +1337,7 @@ class TestToolMessageImageHoisting:
             {
                 "role": "assistant",
                 "content": None,
-                "tool_calls": [
-                    {"id": "call_1", "type": "function", "function": {"name": "read", "arguments": "{}"}}
-                ],
+                "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "read", "arguments": "{}"}}],
             },
             {
                 "role": "tool",
@@ -1559,6 +1496,36 @@ class TestSystemMessagesFirst:
         assert tuple(m["content"] for m in messages) == self.ORIGINAL_ORDER
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("is_async", [False, True])
+    @pytest.mark.parametrize("enabled", [False, True])
+    async def test_reasoning_normalization_preserves_prompt_cache_ordering(
+        self, monkeypatch: pytest.MonkeyPatch, is_async: bool, enabled: bool
+    ) -> None:
+        monkeypatch.setattr(litellm, "openai_system_messages_first", enabled)
+        messages: Final = [
+            {**message, **({"reasoning_content": "thinking"} if message["role"] == "assistant" else {})}
+            for message in self.MESSAGES
+        ]
+        original: Final = deepcopy(messages)
+        kwargs: Final = {
+            "model": "reasoning-test",
+            "messages": messages,
+            "optional_params": {},
+            "litellm_params": {"custom_llm_provider": "openai", "reasoning_content_field": "reasoning"},
+            "headers": {},
+        }
+        request: Final = (
+            await self.config.async_transform_request(**kwargs) if is_async else self.config.transform_request(**kwargs)
+        )
+        assert tuple(m["content"] for m in request["messages"]) == (self.ORDERED if enabled else self.ORIGINAL_ORDER)
+        assert next(m for m in request["messages"] if m["role"] == "assistant") == {
+            "role": "assistant",
+            "content": "reply",
+            "reasoning": "thinking",
+        }
+        assert messages == original
+
+    @pytest.mark.asyncio
     async def test_async_transform_request_moves_system_messages_first(self, monkeypatch):
         class UninstantiatedOpenAIGPTConfig(OpenAIGPTConfig):
             _is_base_class = True
@@ -1617,7 +1584,9 @@ class TestOpenAIPromptCacheBreakpointChatPath:
         assert request["messages"][0]["content"] == [
             {"type": "text", "text": "sys", "prompt_cache_breakpoint": self.EXPLICIT}
         ]
-        assert request["messages"][1]["content"] == [{"type": "text", "text": "hi", "prompt_cache_breakpoint": self.EXPLICIT}]
+        assert request["messages"][1]["content"] == [
+            {"type": "text", "text": "hi", "prompt_cache_breakpoint": self.EXPLICIT}
+        ]
         assert request["extra_body"] == {"prompt_cache_options": self.EXPLICIT}
         assert "prompt_cache_options" not in request
 
@@ -1642,7 +1611,12 @@ class TestOpenAIPromptCacheBreakpointChatPath:
                 {"role": "assistant", "content": "ok", **marked, "tool_calls": [{**call, **marked}]},
                 {"role": "tool", "tool_call_id": "c1", "content": "done"},
             ],
-            optional_params={"tools": [{"type": "function", "function": {**function, **marked}}, {"type": "function", "function": function, **marked}]},
+            optional_params={
+                "tools": [
+                    {"type": "function", "function": {**function, **marked}},
+                    {"type": "function", "function": function, **marked},
+                ]
+            },
             litellm_params={"custom_llm_provider": "openai", "drop_params": drop_params},
             headers={},
         )
@@ -1753,7 +1727,6 @@ class TestChatCompletionsClientBreakpointUnderDropParams:
                 "content": [{"type": "text", "text": "Describe this", "prompt_cache_breakpoint": {"mode": "explicit"}}],
             }
         ]
-
 
     @pytest.mark.parametrize("stray_part", ["Answer briefly", None], ids=["string", "null"])
     def test_drop_params_leaves_a_part_that_is_not_an_object_for_openai_to_reject(self, stray_part: object):
@@ -1877,9 +1850,7 @@ class TestToolSchemaCombinatorFlatteningForOpenAI:
                 "parameters": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
             },
         }
-        request = self._transform(
-            self.config, "gpt-4o", {"custom_llm_provider": "openai", "api_base": None}, [tool]
-        )
+        request = self._transform(self.config, "gpt-4o", {"custom_llm_provider": "openai", "api_base": None}, [tool])
         assert request["tools"][0] is tool
 
     @pytest.mark.asyncio
@@ -2044,9 +2015,27 @@ def _developer_message_after_a_user_turn() -> list[dict[str, str]]:
 @pytest.mark.parametrize(
     ("config", "custom_llm_provider", "api_base", "declared", "expected_roles"),
     [
-        (OpenAIGPTConfig(), "openai", "https://api.openai.com/v1", False, ["system", "user", "assistant", "system", "user"]),
-        (OpenAIGPT5Config(), "openai", "https://api.openai.com/v1", False, ["system", "user", "assistant", "system", "user"]),
-        (OpenAIGPTConfig(), "openai", "http://vllm.internal:8000/v1", None, ["system", "user", "assistant", "system", "user"]),
+        (
+            OpenAIGPTConfig(),
+            "openai",
+            "https://api.openai.com/v1",
+            False,
+            ["system", "user", "assistant", "system", "user"],
+        ),
+        (
+            OpenAIGPT5Config(),
+            "openai",
+            "https://api.openai.com/v1",
+            False,
+            ["system", "user", "assistant", "system", "user"],
+        ),
+        (
+            OpenAIGPTConfig(),
+            "openai",
+            "http://vllm.internal:8000/v1",
+            None,
+            ["system", "user", "assistant", "system", "user"],
+        ),
         (OpenAIGPTConfig(), "openai", "http://vllm.internal:8000/v1", False, ["system", "user", "assistant", "user"]),
         (OpenAIGPTConfig(), "groq", None, None, ["system", "user", "assistant", "system", "user"]),
         (OpenAIGPTConfig(), "groq", None, False, ["system", "user", "assistant", "user"]),
@@ -2070,7 +2059,10 @@ def test_translate_developer_role_hoists_a_later_developer_message_only_for_a_mo
         model_info=None,
     )
     assert [message["role"] for message in messages] == expected_roles
-    assert "Answer with exactly one word." in [message["content"] for message in messages if message["role"] == "system"][-1]
+    assert (
+        "Answer with exactly one word."
+        in [message["content"] for message in messages if message["role"] == "system"][-1]
+    )
 
 
 @pytest.mark.parametrize("role", [["user"], {"name": "user"}])
@@ -2110,7 +2102,10 @@ def test_completion_leaves_the_callers_closing_developer_message_unchanged_on_a_
         {"role": "assistant", "content": "Send it."},
         {
             "role": "developer",
-            "content": [{"type": "text", "text": "Look at this."}, {"type": "image_url", "image_url": "data:image/png;base64,aW1hZ2U="}],
+            "content": [
+                {"type": "text", "text": "Look at this."},
+                {"type": "image_url", "image_url": "data:image/png;base64,aW1hZ2U="},
+            ],
         },
     ]
     sent: Final = copy.deepcopy(messages)

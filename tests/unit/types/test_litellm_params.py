@@ -224,6 +224,8 @@ OPTION_NAMES: Final = (
     "disable_add_transform_inline_image_block",
     "merge_reasoning_content_in_choices",
     "thought_signature_in_tool_call_id",
+    "forward_reasoning_content",
+    "reasoning_content_field",
     "enable_json_schema_validation",
     "complete_response",
     "stream_chunk_size",
