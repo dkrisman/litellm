@@ -122,9 +122,11 @@ def _estimate_stream_prompt_tokens(
     alone (Claude Code's context meter) then under-report the context size
     for the whole turn. ``None`` (never raises) keeps today's zeros."""
     try:
+        tools = completion_kwargs.get("tools")
         count = litellm.token_counter(
             model=str(completion_kwargs.get("model") or ""),
-            messages=list(completion_kwargs.get("messages") or []),  # type: ignore[arg-type]
+            messages=list(completion_kwargs.get("messages") or []),
+            tools=list(tools) if isinstance(tools, list) else None,
         )
         return int(count) or None
     except Exception as e:
