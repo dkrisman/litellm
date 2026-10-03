@@ -112,6 +112,28 @@ def _client_facing_model(
     return model
 
 
+def _estimate_stream_prompt_tokens(
+    completion_kwargs: "Mapping[str, object]",
+) -> int | None:
+    """Best-effort prompt token count for the streamed ``message_start`` usage
+    block. Streaming backends only report usage in their final chunk, so the
+    adapter would otherwise hardcode ``input_tokens=0`` into ``message_start``
+    — and clients that take their input accounting from ``message_start``
+    alone (Claude Code's context meter) then under-report the context size
+    for the whole turn. ``None`` (never raises) keeps today's zeros."""
+    try:
+        count = litellm.token_counter(
+            model=str(completion_kwargs.get("model") or ""),
+            messages=list(completion_kwargs.get("messages") or []),  # type: ignore[arg-type]
+        )
+        return int(count) or None
+    except Exception as e:
+        verbose_logger.debug(
+            "anthropic adapter: message_start prompt token estimate failed: %s", e
+        )
+        return None
+
+
 async def _prepare_context_managed_request(
     *,
     model: str,
@@ -700,6 +722,7 @@ class LiteLLMMessagesToCompletionTransformationHandler:
                 polyfill_result=polyfill_result,
                 is_async=True,
                 litellm_logging_obj=litellm_logging_obj_from_kwargs(kwargs),
+                initial_input_tokens=_estimate_stream_prompt_tokens(completion_kwargs),
             )
             if transformed_stream is not None:
                 return transformed_stream
@@ -839,6 +862,7 @@ class LiteLLMMessagesToCompletionTransformationHandler:
                 polyfill_result=polyfill_result,
                 is_async=False,
                 litellm_logging_obj=litellm_logging_obj_from_kwargs(kwargs),
+                initial_input_tokens=_estimate_stream_prompt_tokens(completion_kwargs),
             )
             if transformed_stream is not None:
                 return transformed_stream

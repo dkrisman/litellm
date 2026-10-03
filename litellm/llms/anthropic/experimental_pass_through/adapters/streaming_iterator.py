@@ -312,6 +312,7 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         compaction_block: CompactionBlock | None = None,
         iterations_usage: list[UsageIteration] | None = None,
         litellm_logging_obj: "LiteLLMLoggingObject | None" = None,
+        initial_input_tokens: int | None = None,
     ):
         # Wrap the upstream stream so chunks that carry both content and a
         # finish_reason (fake-streamed providers) are split into two — see
@@ -328,6 +329,13 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         # Synthesized compaction block from compact_20260112 polyfill (streaming).
         self.compaction_block = compaction_block
         self.iterations_usage = iterations_usage
+        # Estimated prompt token count for the message_start usage block.
+        # Backends that only report usage in the final chunk (e.g. OpenAI
+        # streams, Bedrock Converse) would otherwise force zeros into
+        # message_start, and clients that take their input accounting from
+        # message_start alone (Claude Code's context meter) then under-report
+        # the context size for the whole turn.
+        self.initial_input_tokens = initial_input_tokens
         self._refusal_text: str = ""
         self.sent_compaction_block: bool = False
         # Per-phase flags so the compaction block's start/delta/stop events
@@ -509,11 +517,19 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         end of the stream, since Bedrock Converse API only returns usage data in the final
         response chunk.
 
+        input_tokens carries the caller-provided estimate when one was computed
+        (see ``initial_input_tokens``): clients like Claude Code read their
+        input accounting from message_start only, so a zero there makes the
+        whole turn look near-empty regardless of what message_delta later
+        reports. The exact split (including cache reads) still arrives in the
+        final message_delta.
+
         Returns:
-            UsageDelta with all token counts initialized to 0.
+            UsageDelta with output and cache counts at 0 and input_tokens at
+            the estimate (0 when none was provided).
         """
         return UsageDelta(
-            input_tokens=0,
+            input_tokens=self.initial_input_tokens or 0,
             output_tokens=0,
             cache_creation_input_tokens=0,
             cache_read_input_tokens=0,
