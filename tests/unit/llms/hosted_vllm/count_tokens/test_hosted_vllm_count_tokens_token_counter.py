@@ -187,3 +187,46 @@ def test_should_use_token_counting_api_only_for_hosted_vllm() -> None:
     assert counter.should_use_token_counting_api("hosted_vllm")
     assert not counter.should_use_token_counting_api("vllm")
     assert not counter.should_use_token_counting_api("openai")
+
+
+def test_tokenize_body_honors_reasoning_transport_params():
+    """The deployment's reasoning-transport settings must render in the count
+    the same way they render in the completion: with forwarding on, prior
+    assistant reasoning stays in the tokenize body (under the configured
+    field); without it, it is dropped (upstream default)."""
+    from litellm.llms.hosted_vllm.count_tokens.token_counter import (
+        chat_request_for_tokenize,
+    )
+
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": "question"}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "prior reasoning here", "signature": ""},
+                {"type": "text", "text": "answer"},
+            ],
+        },
+        {"role": "user", "content": [{"type": "text", "text": "follow-up"}]},
+    ]
+
+    plain = chat_request_for_tokenize("served", messages, None, "sys")
+    forwarded = chat_request_for_tokenize(
+        "served",
+        messages,
+        None,
+        "sys",
+        litellm_params={
+            "forward_reasoning_content": True,
+            "reasoning_content_field": "reasoning",
+        },
+    )
+
+    def rendered(body):
+        import json
+
+        return json.dumps(body["messages"])
+
+    assert "prior reasoning here" not in rendered(plain)
+    assert "prior reasoning here" in rendered(forwarded)
+    assert '"reasoning"' in rendered(forwarded)

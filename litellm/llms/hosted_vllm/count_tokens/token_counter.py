@@ -65,6 +65,7 @@ def chat_request_for_tokenize(
     system: object,
     *,
     request_model: str | None = None,
+    litellm_params: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """The ``/tokenize`` body for ``messages``: what the chat completion path would send.
 
@@ -72,7 +73,11 @@ def chat_request_for_tokenize(
     under the model name the client asked for (``request_model``) as that path does, and
     every input through the provider's message transform, so the count matches the prompt
     the server later renders for the real request. ``model`` is the served model name the
-    tokenize call names.
+    tokenize call names. ``litellm_params`` (the deployment's) reaches the provider
+    transform so reasoning-transport settings (``forward_reasoning_content`` /
+    ``reasoning_content_field``) render in the count exactly as they render in the
+    completion — without them, a deployment that forwards prior reasoning
+    under-counts by the whole reasoning share of the conversation.
     """
     from litellm.llms.anthropic.experimental_pass_through.adapters.transformation import (
         LiteLLMAnthropicMessagesAdapter,
@@ -101,7 +106,11 @@ def chat_request_for_tokenize(
         chat_messages = cast(Sequence[AllMessageValues], messages)  # cast-ok: OpenAI chat dicts as received
         chat_tools = tools
     chat_request: Final = HostedVLLMChatConfig().transform_request(
-        model=model, messages=list(chat_messages), optional_params={}, litellm_params={}, headers={}
+        model=model,
+        messages=list(chat_messages),
+        optional_params={},
+        litellm_params=dict(litellm_params or {}),  # mutable-ok: provider request contract
+        headers={},
     )
     body: Final[dict[str, object]] = {  # mutable-ok: JSON request body, sent once
         "model": model,
@@ -141,7 +150,12 @@ class HostedVLLMTokenCounter(BaseTokenCounter):
         headers: Final = {"Authorization": f"Bearer {api_key}"} if isinstance(api_key, str) and api_key else {}
         try:
             body: Final = chat_request_for_tokenize(
-                model_to_use, messages, tools, system, request_model=request_model or None
+                model_to_use,
+                messages,
+                tools,
+                system,
+                request_model=request_model or None,
+                litellm_params=params,
             )
             response: Final = await get_async_httpx_client(llm_provider=LlmProviders.HOSTED_VLLM).post(
                 tokenize_url(api_base), json=body, headers=headers
