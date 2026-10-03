@@ -89,6 +89,47 @@ def _extract_proxy_litellm_metadata(
     return litellm_metadata, user_api_key_auth
 
 
+def _stream_estimate_kwargs(
+    completion_kwargs: "Mapping[str, object]",
+) -> "dict[str, object]":
+    """``initial_input_tokens`` (calibrated) and ``estimate_calibration`` (key, raw)
+    for the stream wrapper: the estimate is scaled by the deployment's observed
+    render ratio, and the raw value rides along so the wrapper can fold this
+    stream's true usage back into the EMA. See usage_calibration.py."""
+    from .usage_calibration import calibrated_estimate
+
+    raw: Final = _estimate_stream_prompt_tokens(completion_kwargs)
+    if raw is None:
+        return {"initial_input_tokens": None, "estimate_calibration": None}
+    key: Final = str(completion_kwargs.get("model") or "")
+    return {
+        "initial_input_tokens": calibrated_estimate(key, raw),
+        "estimate_calibration": (key, raw),
+    }
+
+
+def _estimate_stream_prompt_tokens(
+    completion_kwargs: "Mapping[str, object]",
+) -> int | None:
+    """Best-effort prompt token count for the streamed ``message_start`` usage
+    block. Streaming backends only report usage in their final chunk, so the
+    adapter would otherwise hardcode ``input_tokens=0`` into ``message_start``
+    — and clients that take their input accounting from ``message_start``
+    alone (Claude Code's context meter) then under-report the context size
+    for the whole turn. ``None`` (never raises) keeps today's zeros."""
+    try:
+        tools = completion_kwargs.get("tools")
+        count = litellm.token_counter(
+            model=str(completion_kwargs.get("model") or ""),
+            messages=list(completion_kwargs.get("messages") or []),
+            tools=list(tools) if isinstance(tools, list) else None,
+        )
+        return int(count) or None
+    except Exception as e:
+        verbose_logger.debug("anthropic adapter: message_start prompt token estimate failed: %s", e)
+        return None
+
+
 async def _prepare_context_managed_request(
     *,
     model: str,
@@ -674,6 +715,7 @@ class LiteLLMMessagesToCompletionTransformationHandler:
                 polyfill_result=polyfill_result,
                 is_async=True,
                 litellm_logging_obj=litellm_logging_obj_from_kwargs(kwargs),
+                **_stream_estimate_kwargs(completion_kwargs),
             )
             if transformed_stream is not None:
                 return transformed_stream
@@ -809,6 +851,7 @@ class LiteLLMMessagesToCompletionTransformationHandler:
                 polyfill_result=polyfill_result,
                 is_async=False,
                 litellm_logging_obj=litellm_logging_obj_from_kwargs(kwargs),
+                **_stream_estimate_kwargs(completion_kwargs),
             )
             if transformed_stream is not None:
                 return transformed_stream
