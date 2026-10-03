@@ -112,6 +112,23 @@ def _client_facing_model(
     return model
 
 
+def _stream_estimate_kwargs(
+    completion_kwargs: "Mapping[str, object]",
+) -> "dict[str, object]":
+    """``initial_input_tokens`` (calibrated) and ``estimate_calibration`` (key, raw)
+    for the stream wrapper — see usage_calibration.py."""
+    from .usage_calibration import calibrated_estimate
+
+    raw: Final = _estimate_stream_prompt_tokens(completion_kwargs)
+    if raw is None:
+        return {"initial_input_tokens": None, "estimate_calibration": None}
+    key: Final = str(completion_kwargs.get("model") or "")
+    return {
+        "initial_input_tokens": calibrated_estimate(key, raw),
+        "estimate_calibration": (key, raw),
+    }
+
+
 def _estimate_stream_prompt_tokens(
     completion_kwargs: "Mapping[str, object]",
 ) -> int | None:
@@ -724,7 +741,7 @@ class LiteLLMMessagesToCompletionTransformationHandler:
                 polyfill_result=polyfill_result,
                 is_async=True,
                 litellm_logging_obj=litellm_logging_obj_from_kwargs(kwargs),
-                initial_input_tokens=_estimate_stream_prompt_tokens(completion_kwargs),
+                **_stream_estimate_kwargs(completion_kwargs),
             )
             if transformed_stream is not None:
                 return transformed_stream
@@ -864,7 +881,7 @@ class LiteLLMMessagesToCompletionTransformationHandler:
                 polyfill_result=polyfill_result,
                 is_async=False,
                 litellm_logging_obj=litellm_logging_obj_from_kwargs(kwargs),
-                initial_input_tokens=_estimate_stream_prompt_tokens(completion_kwargs),
+                **_stream_estimate_kwargs(completion_kwargs),
             )
             if transformed_stream is not None:
                 return transformed_stream

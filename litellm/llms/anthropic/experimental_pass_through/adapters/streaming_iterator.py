@@ -313,6 +313,7 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         iterations_usage: list[UsageIteration] | None = None,
         litellm_logging_obj: "LiteLLMLoggingObject | None" = None,
         initial_input_tokens: int | None = None,
+        estimate_calibration: "tuple[str, int] | None" = None,
     ):
         # Wrap the upstream stream so chunks that carry both content and a
         # finish_reason (fake-streamed providers) are split into two — see
@@ -336,6 +337,9 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         # message_start alone (Claude Code's context meter) then under-report
         # the context size for the whole turn.
         self.initial_input_tokens = initial_input_tokens
+        # (deployment key, raw uncalibrated estimate) — final usage feeds the
+        # per-deployment EMA that calibrates future estimates.
+        self.estimate_calibration = estimate_calibration
         self._refusal_text: str = ""
         self.sent_compaction_block: bool = False
         # Per-phase flags so the compaction block's start/delta/stop events
@@ -380,6 +384,20 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         usage_dict: UsageDelta = LiteLLMAnthropicMessagesAdapter._translate_openai_usage_to_anthropic_usage_delta(
             chunk.usage
         )
+        if self.estimate_calibration is not None:
+            from .usage_calibration import record_estimate_calibration
+
+            true_input = sum(
+                v
+                for v in (
+                    usage_dict.get("input_tokens"),
+                    usage_dict.get("cache_read_input_tokens"),
+                    usage_dict.get("cache_creation_input_tokens"),
+                )
+                if isinstance(v, int)
+            )
+            key, raw_estimate = self.estimate_calibration
+            record_estimate_calibration(key, raw_estimate, true_input)
         if self.applied_edits and "context_management" not in merged_chunk:
             merged_chunk["context_management"] = ContextManagementResponse(applied_edits=list(self.applied_edits))
         return self._augment_message_delta_usage({**merged_chunk, "usage": usage_dict})

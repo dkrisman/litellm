@@ -316,6 +316,7 @@ class AnthropicAdapter:
         is_async: bool = True,
         litellm_logging_obj: "LiteLLMLoggingObject | None" = None,
         initial_input_tokens: int | None = None,
+        estimate_calibration: "tuple[str, int] | None" = None,
     ) -> AsyncIterator[bytes] | Iterator[bytes] | None:
         """
         Translate OpenAI streaming response to Anthropic format.
@@ -344,6 +345,7 @@ class AnthropicAdapter:
             iterations_usage=iterations_usage,
             litellm_logging_obj=litellm_logging_obj,
             initial_input_tokens=initial_input_tokens,
+            estimate_calibration=estimate_calibration,
         )
         # Return the SSE-wrapped version for proper event formatting.
         if is_async:
