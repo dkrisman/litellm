@@ -89,6 +89,7 @@ def chat_request_for_tokenize(
     system: object,
     *,
     request_model: str | None = None,
+    litellm_params: Mapping[str, object] | None = None,
 ) -> Mapping[str, object]:
     """The ``/tokenize`` body for ``messages``: what the chat completion path would send.
 
@@ -96,7 +97,10 @@ def chat_request_for_tokenize(
     under the model name the client asked for (``request_model``) as that path does, and
     every input through the provider's message transform, so the count matches the prompt
     the server later renders for the real request. ``model`` is the served model name the
-    tokenize call names.
+    tokenize call names. ``litellm_params`` (the deployment's) reaches the provider
+    transform so reasoning-transport settings (``forward_reasoning_content`` /
+    ``reasoning_content_field``) render in the count exactly as they render in the
+    completion.
     """
     from litellm.llms.anthropic.messages.adapters.transformation import (
         LiteLLMAnthropicMessagesAdapter,
@@ -137,7 +141,11 @@ def chat_request_for_tokenize(
     )
     chat_request: Final = _FIELDS.validate_python(
         HostedVLLMChatConfig().transform_request(  # pyright: ignore[reportUnknownMemberType]  # upstream transform's signature is partially untyped
-            model=model, messages=list(chat_messages), optional_params={}, litellm_params={}, headers={}
+            model=model,
+            messages=list(chat_messages),
+            optional_params={},
+            litellm_params=dict(litellm_params or {}),  # mutable-ok: provider request contract
+            headers={},
         )
     )
     body: Final[dict[str, object]] = {  # mutable-ok: JSON request body, sent once
@@ -181,7 +189,12 @@ class HostedVLLMTokenCounter(BaseTokenCounter):
         headers: Final = {"Authorization": f"Bearer {api_key}"} if isinstance(api_key, str) and api_key else {}
         try:
             body: Final = chat_request_for_tokenize(
-                model_to_use, messages, tools, system, request_model=request_model or None
+                model_to_use,
+                messages,
+                tools,
+                system,
+                request_model=request_model or None,
+                litellm_params=params,
             )
             client: Final = get_async_httpx_client(llm_provider=LlmProviders.HOSTED_VLLM)
             response: Final[httpx.Response] = await client.post(  # pyright: ignore[reportUnknownMemberType]  # upstream client helper is partially untyped
