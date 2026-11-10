@@ -186,3 +186,26 @@ def test_should_use_token_counting_api_only_for_hosted_vllm() -> None:
     assert counter.should_use_token_counting_api("hosted_vllm")
     assert not counter.should_use_token_counting_api("vllm")
     assert not counter.should_use_token_counting_api("openai")
+
+
+def test_tokenize_body_honors_reasoning_transport_params():
+    """With reasoning_content_field=reasoning the count renders prior reasoning
+    under the template's field, exactly as the completion path does."""
+    messages: Final = [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "a1", "reasoning_content": "prior reasoning"},
+        {"role": "user", "content": "q2"},
+    ]
+    renamed: Final = chat_request_for_tokenize(
+        "qwen", messages, None, system=None, litellm_params={"reasoning_content_field": "reasoning"}
+    )
+    assert renamed["messages"][1]["reasoning"] == "prior reasoning"
+    assert "reasoning_content" not in renamed["messages"][1]
+
+    default: Final = chat_request_for_tokenize("qwen", messages, None, system=None)
+    assert default["messages"][1]["reasoning_content"] == "prior reasoning"
+
+    dropped: Final = chat_request_for_tokenize(
+        "qwen", messages, None, system=None, litellm_params={"forward_reasoning_content": False}
+    )
+    assert "reasoning_content" not in dropped["messages"][1]
