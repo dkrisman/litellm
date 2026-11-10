@@ -29,6 +29,10 @@ from litellm._uuid import uuid
 from litellm.exceptions import ContextWindowExceededError, MidStreamFallbackError
 from litellm.litellm_core_utils.core_helpers import as_str_mapping, attribute_items
 from litellm.litellm_core_utils.hidden_params import set_hidden_params
+from litellm.llms.anthropic.messages.adapters.usage_calibration import (
+    calibrated_estimate,
+    record_estimate_calibration,
+)
 from litellm.llms.anthropic.messages.safeguards import StreamedSafeguardResults
 from litellm.llms.anthropic.messages.utils import anthropic_sse_frame
 from litellm.llms.base_llm.chat.transformation import BaseLLMException
@@ -738,6 +742,22 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         usage_dict: UsageDelta = LiteLLMAnthropicMessagesAdapter.translate_openai_usage_to_anthropic_usage_delta(
             chunk.usage
         )
+        estimate_calibration: Final = getattr(self, "_estimate_calibration", None)
+        if estimate_calibration is not None:
+            calibration_key, raw_estimate = estimate_calibration
+            record_estimate_calibration(
+                calibration_key,
+                raw_estimate,
+                sum(
+                    value
+                    for value in (
+                        usage_dict.get("input_tokens"),
+                        usage_dict.get("cache_creation_input_tokens"),
+                        usage_dict.get("cache_read_input_tokens"),
+                    )
+                    if isinstance(value, int)
+                ),
+            )
         if self.applied_edits and "context_management" not in merged_chunk:
             merged_chunk["context_management"] = ContextManagementResponse(applied_edits=list(self.applied_edits))
         return self._augment_message_delta_usage({**merged_chunk, "usage": usage_dict})
@@ -871,12 +891,17 @@ class AnthropicStreamWrapper(AdapterCompletionStreamWrapper):
         Output and cache counts start at zero. Provider usage in message_delta
         remains authoritative. Failed estimates fall back to zero.
         """
+        raw_estimate: Final = (
+            self._estimate_initial_input_tokens()
+            if litellm.anthropic_messages_estimate_initial_input_tokens is True
+            else 0
+        )
+        # (deployment key, raw uncalibrated estimate) — the final usage feeds a
+        # per-deployment EMA that calibrates away the local-tokenizer-vs-template
+        # render bias; see usage_calibration.py
+        self._estimate_calibration = (self.model, raw_estimate) if raw_estimate else None
         return UsageDelta(
-            input_tokens=(
-                self._estimate_initial_input_tokens()
-                if litellm.anthropic_messages_estimate_initial_input_tokens is True
-                else 0
-            ),
+            input_tokens=calibrated_estimate(self.model, raw_estimate) if raw_estimate else 0,
             output_tokens=0,
             cache_creation_input_tokens=0,
             cache_read_input_tokens=0,
